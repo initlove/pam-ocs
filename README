@@ -1,0 +1,17 @@
+A pam module , authenticate by ocs.
+It is the first step for my online account plan.
+In this plan, we use gdm to login by the online account.
+After that, the online account info will keep in 'gnome-session'.
+Maybe I'll write a new 'online-session'.
+This session's role is like 'cookie' in web.
+
+As ocs have friends, activitys, apps, 
+the following usage of our online account system is quite easy,
+we have the message, activitys..
+
+Most important: we need to have S3 like dist service.
+Which is for us to have a basic home dir.
+
+Now just support the plain user/password.
+In the long term, will support oauth and the etc, but need to modify GDM lot.
+Need to have deep understanding about gnome-online-account.
