@@ -67,152 +67,42 @@
 #include <rest/rest-proxy-call.h>
 #include <rest/rest-xml-parser.h>
 #endif
-static int
-replace_and_print (pam_handle_t *pamh, const char *mesg)
+
+int
+write_message (pam_handle_t *pamh, int msg_style, char **value, const char *fmt)
 {
-  char *output;
-  size_t length = strlen (mesg) + PAM_MAX_MSG_SIZE;
-  char myhostname[HOST_NAME_MAX+1];
-  const void *str = NULL;
-  const char *p, *q;
-  int item;
-  size_t len;
+	struct pam_message msg[1], *pmsg[1];
+	struct pam_response *resp = NULL;
+	struct pam_conv *conv;
+	void *conv_void;
+	int retval;
 
-  output = malloc (length);
-  if (output == NULL)
-    {
-      pam_syslog (pamh, LOG_ERR, "running out of memory");
-      return PAM_BUF_ERR;
-    }
+        
+	pmsg[0] = &msg[0];
+        msg[0].msg_style = msg_style;
+        msg[0].msg = fmt;
 
-  for (p = mesg, len = 0; *p != '\0' && len < length - 1; ++p)
-    {
-      if (*p != '%' || p[1] == '\0')
-	{
-	  output[len++] = *p;
-	  continue;
+	retval = pam_get_item (pamh, PAM_CONV, (const void **) &conv_void);
+	conv = (struct pam_conv *) conv_void;
+	if (retval == PAM_SUCCESS) {
+		retval = conv->conv (1, (const struct pam_message **)pmsg,
+	              &resp, conv->appdata_ptr);
+        	if (retval != PAM_SUCCESS) {
+	            	return retval;
+		} else {
+			*value = resp[0].resp;
+			free (resp);
+			return PAM_SUCCESS;
+		}
+        } else {
+		return retval;
 	}
-      switch (*++p)
-	{
-	case 'H':
-	  item = PAM_RHOST;
-	  break;
-	case 'h':
-	  item = -2; /* aka PAM_LOCALHOST */
-	  break;
-	case 's':
-	  item = PAM_SERVICE;
-	  break;
-	case 't':
-	  item = PAM_TTY;
-	  break;
-	case 'U':
-	  item = PAM_RUSER;
-	  break;
-	case 'u':
-	  item = PAM_USER;
-	  break;
-	default:
-	  output[len++] = *p;
-	  continue;
-	}
-      if (item == -2)
-	{
-	  if (gethostname (myhostname, sizeof (myhostname)) == -1)
-	    str = NULL;
-	  else
-	    str = &myhostname;
-	}
-      else
-	{
-	  if (pam_get_item (pamh, item, &str) != PAM_SUCCESS)
-	    str = NULL;
-	}
-      if (str == NULL)
-	str = "(null)";
-      for (q = str; *q != '\0' && len < length - 1; ++q)
-	output[len++] = *q;
-    }
-  output[len] = '\0';
-
-  pam_info (pamh, "%s", output);
-  free (output);
-
-  return PAM_SUCCESS;
 }
 
 static int
 pam_echo (pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-  int fd;
-  int orig_argc = argc;
-  const char **orig_argv = argv;
-  const char *file = NULL;
-  int retval;
-
-  if (flags & PAM_SILENT)
-    return PAM_IGNORE;
-
-  for (; argc-- > 0; ++argv)
-    {
-      if (!strncmp (*argv, "file=", 5))
-	file = (5 + *argv);
-    }
-
-  /* No file= option, use argument for output.  */
-  if (file == NULL || file[0] == '\0')
-    {
-      char msg[PAM_MAX_MSG_SIZE];
-      const char *p;
-      int i;
-      size_t len;
-
-      for (i = 0, len = 0; i < orig_argc && len < sizeof (msg) - 1; ++i)
-	{
-	  if (i > 0)
-	    msg[len++] = ' ';
-	  for (p = orig_argv[i]; *p != '\0' && len < sizeof(msg) - 1; ++p)
-	    msg[len++] = *p;
-	}
-      msg[len] = '\0';
-
-      retval = replace_and_print (pamh, msg);
-    }
-  else if ((fd = open (file, O_RDONLY, 0)) >= 0)
-    {
-      char *mtmp = NULL;
-      struct stat st;
-
-      /* load file into message buffer. */
-      if ((fstat (fd, &st) < 0) || !st.st_size)
 	return PAM_IGNORE;
-
-      mtmp = malloc (st.st_size + 1);
-      if (!mtmp)
-	return PAM_BUF_ERR;
-
-      if (pam_modutil_read (fd, mtmp, st.st_size) == -1)
-	{
-	  pam_syslog (pamh, LOG_ERR, "Error while reading %s: %m", file);
-	  free (mtmp);
-	  return PAM_IGNORE;
-	}
-
-      if (mtmp[st.st_size - 1] == '\n')
-	mtmp[st.st_size - 1] = '\0';
-      else
-	mtmp[st.st_size] = '\0';
-
-      close (fd);
-      retval = replace_and_print (pamh, mtmp);
-      free (mtmp);
-    }
-  else
-    {
-       pam_syslog (pamh, LOG_ERR, "Cannot open %s: %m", file);
-       retval = PAM_IGNORE;
-    }
-  return retval;
 }
 
 #if 1
@@ -271,38 +161,25 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 void
 prompt_info (pam_handle_t *pamh)
 {
-      struct pam_message msg[2], *pmsg[2];
-      struct pam_response *resp = NULL;
-      struct pam_conv *conv;
-      void *conv_void;
-      int num_msg = 0;
+	gchar *user = NULL;
+	gchar *password = NULL;
+	gchar *server = NULL;
 	int retval;
 
-          pmsg[num_msg] = &msg[num_msg];
-          msg[num_msg].msg_style = PAM_PROMPT_ECHO_ON;
-          msg[num_msg].msg = "Login: ";
-          ++num_msg;
-
-      pmsg[num_msg] = &msg[num_msg];
-      msg[num_msg].msg_style = PAM_PROMPT_ECHO_OFF;
-      msg[num_msg].msg = "Password: ";
-      ++num_msg;
-
-
-      retval = pam_get_item (pamh, PAM_CONV, (const void **) &conv_void);
-      conv = (struct pam_conv *) conv_void;
-	if (retval == PAM_SUCCESS) {
-		retval = conv->conv (num_msg, (const struct pam_message **)pmsg,
-	              &resp, conv->appdata_ptr);
-        	if (retval != PAM_SUCCESS)
-	            return retval;
-		else {
-printf ("num %d %s\n", num_msg, resp[0].resp);
-		}
-        } else {
-printf ("cannot find CONV\n");
+	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &server, "Server: ");
+	if (retval != PAM_SUCCESS)
 		return retval;
-	}
+
+	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &user, "Login: ");
+	if (retval != PAM_SUCCESS)
+		return retval;
+
+	retval = write_message(pamh, PAM_PROMPT_ECHO_OFF, &password, "Password: ");
+	if (retval != PAM_SUCCESS)
+		return retval;
+
+	printf ("server %s, user %s password %s\n", server, user, password); 
+	return PAM_SUCCESS;
 }
 
 int
