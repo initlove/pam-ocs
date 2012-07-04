@@ -90,7 +90,8 @@ write_message (pam_handle_t *pamh, int msg_style, char **value, const char *fmt)
         	if (retval != PAM_SUCCESS) {
 	            	return retval;
 		} else {
-			*value = resp[0].resp;
+			if (resp[0].resp)
+				*value = resp[0].resp;
 			free (resp);
 			return PAM_SUCCESS;
 		}
@@ -153,20 +154,19 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 int
 prompt_info (pam_handle_t *pamh)
 {
-        RestProxy *proxy;
-        RestProxyCall *call;
+        RestProxy *proxy = NULL;
+        RestProxyCall *call = NULL;
 	GError *error = NULL;
 	gchar *uri;
 	gchar *user = NULL;
 	gchar *password = NULL;
 	gchar *server = NULL;
 	gchar *msg = NULL;
-	gchar *nul_msg = NULL;
 	int retval;
 
-	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &server, "Server: ");
+	retval = write_message (pamh, PAM_PROMPT_ECHO_ON, &server, "Server: ");
 	if (retval != PAM_SUCCESS)
-		return retval;
+		goto out;
 
 //TODO: uri should be the definitly url, seems bug of soup or rest
 //	I set it to my local server .. 
@@ -177,19 +177,19 @@ prompt_info (pam_handle_t *pamh)
 	rest_proxy_call_set_function (call, "config");
 
  	if (!rest_proxy_call_sync (call, &error)) {
-		g_error ("Cannot shout: %s", error->message);
-//		write_message (pamh, PAM_ERROR_MSG, &msg, error->message);
+		write_message (pamh, PAM_ERROR_MSG, NULL, error->message);
 		g_error_free (error);
-		return PAM_IGNORE;
+		retval = PAM_AUTHINFO_UNAVAIL;
+		goto out;
 	} 
 
-	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &user, "Login: ");
+	retval = write_message (pamh, PAM_PROMPT_ECHO_ON, &user, "Login: ");
 	if (retval != PAM_SUCCESS)
-		return retval;
+		goto out;
 
-	retval = write_message(pamh, PAM_PROMPT_ECHO_OFF, &password, "Password: ");
+	retval = write_message (pamh, PAM_PROMPT_ECHO_OFF, &password, "Password: ");
 	if (retval != PAM_SUCCESS)
-		return retval;
+		goto out;
 
 	rest_proxy_call_add_params (call, 
 				"login", user,
@@ -199,21 +199,40 @@ prompt_info (pam_handle_t *pamh)
 	rest_proxy_call_set_function (call, "person/check");
 
  	if (!rest_proxy_call_sync (call, &error)) {
-		retval = write_message(pamh, PAM_ERROR_MSG, &nul_msg, error->message);
+		retval = write_message (pamh, PAM_ERROR_MSG, NULL, error->message);
 		g_error_free (error);
-		return PAM_AUTHINFO_UNAVAIL;
+		retval = PAM_AUTHINFO_UNAVAIL;
+		goto out;
 	} 
 
 	gint val = ocs_auth_info (call, &msg);
 
 	if (val == 100) {
-		return PAM_SUCCESS;
+		pam_set_item (pamh, PAM_USER, user);
+		pam_set_item (pamh, PAM_AUTHTOK, password);
+		retval = PAM_SUCCESS;
 	} else {
-		retval = write_message(pamh, PAM_ERROR_MSG, &nul_msg, msg);
+		retval = write_message (pamh, PAM_ERROR_MSG, NULL, msg);
 		g_free (msg);
-		return PAM_AUTH_ERR;
+		retval = PAM_AUTH_ERR;
 	}
-	return PAM_SUCCESS;
+
+out:
+	if (user)
+		g_free (user);
+	if (password)
+		g_free (password);
+	if (server)
+		g_free (server);
+	if (msg)
+		g_free (msg);
+
+	if (call)
+		g_object_unref (call);
+	if (proxy)
+		g_object_unref (proxy);
+
+	return retval;
 }
 
 int
