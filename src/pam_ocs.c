@@ -61,11 +61,12 @@
 #include <security/pam_modutil.h>
 #include <security/_pam_macros.h>
 #include <security/pam_ext.h>
-
+#include "pam_ocs.h"
+#if 1
 #include <rest/rest-proxy.h>
 #include <rest/rest-proxy-call.h>
 #include <rest/rest-xml-parser.h>
-
+#endif
 static int
 replace_and_print (pam_handle_t *pamh, const char *mesg)
 {
@@ -214,6 +215,7 @@ pam_echo (pam_handle_t *pamh, int flags, int argc, const char **argv)
   return retval;
 }
 
+#if 1
 int
 ocs_auth_info (RestProxyCall *call, gchar **msg)
 {
@@ -264,14 +266,53 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 
 	return val;
 }
+#endif
+
+void
+prompt_info (pam_handle_t *pamh)
+{
+      struct pam_message msg[2], *pmsg[2];
+      struct pam_response *resp = NULL;
+      struct pam_conv *conv;
+      void *conv_void;
+      int num_msg = 0;
+	int retval;
+
+          pmsg[num_msg] = &msg[num_msg];
+          msg[num_msg].msg_style = PAM_PROMPT_ECHO_ON;
+          msg[num_msg].msg = "Login: ";
+          ++num_msg;
+
+      pmsg[num_msg] = &msg[num_msg];
+      msg[num_msg].msg_style = PAM_PROMPT_ECHO_OFF;
+      msg[num_msg].msg = "Password: ";
+      ++num_msg;
+
+
+      retval = pam_get_item (pamh, PAM_CONV, (const void **) &conv_void);
+      conv = (struct pam_conv *) conv_void;
+	if (retval == PAM_SUCCESS) {
+		retval = conv->conv (num_msg, (const struct pam_message **)pmsg,
+	              &resp, conv->appdata_ptr);
+        	if (retval != PAM_SUCCESS)
+	            return retval;
+		else {
+printf ("num %d %s\n", num_msg, resp[0].resp);
+		}
+        } else {
+printf ("cannot find CONV\n");
+		return retval;
+	}
+}
 
 int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc,
                      const char **argv)
 {
+	prompt_info (pamh);
 	const void *user;
 	pam_get_item(pamh, PAM_USER, &user);
-
+#if 1
 	g_type_init();
 
         RestProxy *proxy;
@@ -299,12 +340,13 @@ pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc,
 		printf ("msg %s\n", msg);
 		g_free (msg);
 	}
+#endif
 	return PAM_SUCCESS;
 }
 
 int
-pam_sm_setcred (pam_handle_t *pamh, int flags,
-		int argc, const char **argv)
+pam_sm_setcred (pam_handle_t *pamh UNUSED, int flags UNUSED,
+		int argc UNUSED, const char **argv UNUSED)
 {
   return PAM_IGNORE;
 }
@@ -324,8 +366,8 @@ pam_sm_open_session (pam_handle_t *pamh, int flags, int argc,
 }
 
 int
-pam_sm_close_session (pam_handle_t *pamh, int flags,
-		      int argc, const char **argv)
+pam_sm_close_session (pam_handle_t *pamh UNUSED, int flags UNUSED,
+		      int argc UNUSED, const char **argv UNUSED)
 {
   return PAM_IGNORE;
 }
@@ -340,12 +382,11 @@ pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc,
     return PAM_IGNORE;
 }
 
-#ifdef PAM_STATIC
-
+#if PAM_STATIC
 /* static module data */
 
-struct pam_module _pam_echo_modstruct = {
-  "pam_echo",
+struct pam_module _pam_ocs_modstruct = {
+  "pam_ocs",
   pam_sm_authenticate,
   pam_sm_setcred,
   pam_sm_acct_mgmt,

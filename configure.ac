@@ -37,7 +37,7 @@ AC_SUBST(SECUREDIR)
 
 AC_ARG_ENABLE(sconfigdir,
         AS_HELP_STRING([--enable-sconfigdir=DIR],[path to module conf files @<:@default=$sysconfdir/security@:>@]),
-        SCONFIGDIR=$enableval, SCONFIGDIR=$sysconfdir/security)
+        SCONFIGDIR=$enableval, SCONFIGDIR=/etc/security)
 AC_SUBST(SCONFIGDIR)
 
 # i18n stuff
@@ -54,6 +54,7 @@ AM_GLIB_GNU_GETTEXT
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
+po/Makefile.in
 ])
 AC_OUTPUT
 
