@@ -99,13 +99,6 @@ write_message (pam_handle_t *pamh, int msg_style, char **value, const char *fmt)
 	}
 }
 
-static int
-pam_echo (pam_handle_t *pamh, int flags, int argc, const char **argv)
-{
-	return PAM_IGNORE;
-}
-
-#if 1
 int
 ocs_auth_info (RestProxyCall *call, gchar **msg)
 {
@@ -156,19 +149,39 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 
 	return val;
 }
-#endif
 
-void
+int
 prompt_info (pam_handle_t *pamh)
 {
+        RestProxy *proxy;
+        RestProxyCall *call;
+	GError *error = NULL;
+	gchar *uri;
 	gchar *user = NULL;
 	gchar *password = NULL;
 	gchar *server = NULL;
+	gchar *msg = NULL;
+	gchar *nul_msg = NULL;
 	int retval;
 
 	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &server, "Server: ");
 	if (retval != PAM_SUCCESS)
 		return retval;
+
+//TODO: uri should be the definitly url, seems bug of soup or rest
+//	I set it to my local server .. 
+	uri = (const gchar *) server;
+	uri = "http://127.0.0.1:3000";
+        proxy = rest_proxy_new (uri, FALSE);
+        call = rest_proxy_new_call (proxy);
+	rest_proxy_call_set_function (call, "config");
+
+ 	if (!rest_proxy_call_sync (call, &error)) {
+		g_error ("Cannot shout: %s", error->message);
+//		write_message (pamh, PAM_ERROR_MSG, &msg, error->message);
+		g_error_free (error);
+		return PAM_IGNORE;
+	} 
 
 	retval = write_message(pamh, PAM_PROMPT_ECHO_ON, &user, "Login: ");
 	if (retval != PAM_SUCCESS)
@@ -178,47 +191,38 @@ prompt_info (pam_handle_t *pamh)
 	if (retval != PAM_SUCCESS)
 		return retval;
 
-	printf ("server %s, user %s password %s\n", server, user, password); 
+	rest_proxy_call_add_params (call, 
+				"login", user,
+				"password", password, 
+				NULL);
+	rest_proxy_call_set_method (call, "POST");
+	rest_proxy_call_set_function (call, "person/check");
+
+ 	if (!rest_proxy_call_sync (call, &error)) {
+		retval = write_message(pamh, PAM_ERROR_MSG, &nul_msg, error->message);
+		g_error_free (error);
+		return PAM_AUTHINFO_UNAVAIL;
+	} 
+
+	gint val = ocs_auth_info (call, &msg);
+
+	if (val == 100) {
+		return PAM_SUCCESS;
+	} else {
+		retval = write_message(pamh, PAM_ERROR_MSG, &nul_msg, msg);
+		g_free (msg);
+		return PAM_AUTH_ERR;
+	}
 	return PAM_SUCCESS;
 }
 
 int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc,
                      const char **argv)
-{
-	prompt_info (pamh);
-	const void *user;
-	pam_get_item(pamh, PAM_USER, &user);
-#if 1
+{	
 	g_type_init();
 
-        RestProxy *proxy;
-        RestProxyCall *call;
-	GError *error = NULL;
-	gchar *uri = "http://localhost:3000";
-        proxy = rest_proxy_new (uri, FALSE);
-        call = rest_proxy_new_call (proxy);
-	rest_proxy_call_add_params (call, "login", "dliang",
-				"password", "novell123", NULL);
-	rest_proxy_call_set_method (call, "POST");
-	rest_proxy_call_set_function (call, "person/check");
-
- 	if (!rest_proxy_call_sync (call, &error)) {
-		g_error ("Cannot shout: %s", error->message);
-		g_error_free (error);
-		return PAM_AUTHINFO_UNAVAIL;
-	} 
-
-	gchar *msg = NULL;
-	gint val = ocs_auth_info (call, &msg);
-
-	printf ("val %d\n", val);
-	if (msg) {
-		printf ("msg %s\n", msg);
-		g_free (msg);
-	}
-#endif
-	return PAM_SUCCESS;
+	return prompt_info (pamh);
 }
 
 int
@@ -232,14 +236,14 @@ int
 pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc,
 		  const char **argv)
 {
-  return pam_echo (pamh, flags, argc, argv);
+  return PAM_IGNORE;
 }
 
 int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc,
 		     const char **argv)
 {
-  return pam_echo (pamh, flags, argc, argv);
+  return PAM_IGNORE;
 }
 
 int
@@ -253,10 +257,7 @@ int
 pam_sm_chauthtok (pam_handle_t *pamh, int flags, int argc,
 		  const char **argv)
 {
-  if (flags & PAM_PRELIM_CHECK)
-    return pam_echo (pamh, flags, argc, argv);
-  else
-    return PAM_IGNORE;
+  return PAM_IGNORE;
 }
 
 #if PAM_STATIC

@@ -1,0 +1,20 @@
+-1. prompt the server input
+ 0. check the url validation & if the url support OCS
+ 1. prompt login hint
+ 2. check login value
+	--- simple, we check if it is less than 4 chars
+	--- we donnot check if the 'user' was valid!
+ 3. prompt password hint
+ 4. check the password
+	--- here, we donnot check the password locally(maybe will, in the future)
+ 5. validate the user/password
+
+.. The end.
+
+
+TODO:
+1. in the login hint part, we can add hint for the client to open in mozilla. (oauth)
+2. mkhomedir, session work
+
+UNKNOWN:
+1. can I implement in the client which is to add an user?
