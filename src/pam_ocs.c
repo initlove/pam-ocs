@@ -68,6 +68,8 @@
 #include <rest/rest-xml-parser.h>
 #endif
 
+#include "utils.h"
+
 int
 write_message (pam_handle_t *pamh, int msg_style, char **value, const char *fmt)
 {
@@ -163,11 +165,11 @@ prompt_info (pam_handle_t *pamh)
 	gchar *server = NULL;
 	gchar *msg = NULL;
 	int retval;
-
+#if 0
 	retval = write_message (pamh, PAM_PROMPT_ECHO_ON, &server, "Server: ");
 	if (retval != PAM_SUCCESS)
 		goto out;
-
+#endif
 //TODO: uri should be the definitly url, seems bug of soup or rest
 //	I set it to my local server .. 
 	uri = (const gchar *) server;
@@ -183,13 +185,31 @@ prompt_info (pam_handle_t *pamh)
 		goto out;
 	} 
 
-	retval = write_message (pamh, PAM_PROMPT_ECHO_ON, &user, "Login: ");
-	if (retval != PAM_SUCCESS)
-		goto out;
+	const void *void_str = NULL;
 
-	retval = write_message (pamh, PAM_PROMPT_ECHO_OFF, &password, "Password: ");
-	if (retval != PAM_SUCCESS)
-		goto out;
+	if ((pam_get_item (pamh, PAM_USER, &void_str) == PAM_SUCCESS) && void_str) {
+		user = g_strdup (void_str);
+	} else {	
+		retval = write_message (pamh, PAM_PROMPT_ECHO_ON, &user, "OCS Login: ");
+		if (retval != PAM_SUCCESS)
+			goto out;
+		else {
+			gchar *new_user = g_strdup_printf ("%s@%s", user, uri);
+			pam_set_item (pamh, PAM_USER, (const void *)new_user);
+			g_free (new_user);
+		}
+	}
+
+	void_str = NULL;
+	if ((pam_get_item (pamh, PAM_AUTHTOK, &void_str) == PAM_SUCCESS) && void_str){
+		password = g_strdup (void_str);
+	} else {
+		retval = write_message (pamh, PAM_PROMPT_ECHO_OFF, &password, "OCS Password: ");
+		if (retval != PAM_SUCCESS)
+			goto out;
+		else
+			pam_set_item (pamh, PAM_AUTHTOK, (const void *)password);
+	}
 
 	rest_proxy_call_add_params (call, 
 				"login", user,
@@ -206,10 +226,7 @@ prompt_info (pam_handle_t *pamh)
 	} 
 
 	gint val = ocs_auth_info (call, &msg);
-
 	if (val == 100) {
-		pam_set_item (pamh, PAM_USER, user);
-		pam_set_item (pamh, PAM_AUTHTOK, password);
 		retval = PAM_SUCCESS;
 	} else {
 		retval = write_message (pamh, PAM_ERROR_MSG, NULL, msg);
@@ -239,37 +256,43 @@ int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc,
                      const char **argv)
 {	
+return PAM_SUCCESS;
 	g_type_init();
 
-	return prompt_info (pamh);
+	int res = prompt_info (pamh);
+
+	if (res == PAM_SUCCESS) {
+		return ocs_pam_create_user (pamh);
+	} else
+		return res;
 }
 
 int
 pam_sm_setcred (pam_handle_t *pamh UNUSED, int flags UNUSED,
 		int argc UNUSED, const char **argv UNUSED)
 {
-  return PAM_IGNORE;
+  return PAM_SUCCESS;
 }
 
 int
 pam_sm_acct_mgmt (pam_handle_t *pamh, int flags, int argc,
 		  const char **argv)
 {
-  return PAM_IGNORE;
+  return PAM_SUCCESS;
 }
 
 int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc,
 		     const char **argv)
 {
-  return PAM_IGNORE;
+	return pam_mkhomedir (pamh);
 }
 
 int
 pam_sm_close_session (pam_handle_t *pamh UNUSED, int flags UNUSED,
 		      int argc UNUSED, const char **argv UNUSED)
 {
-  return PAM_IGNORE;
+  return PAM_SUCCESS;
 }
 
 int
