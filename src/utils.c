@@ -12,7 +12,7 @@ gchar *
 get_mapped_username (gchar *full_name)
 {
 	//TMP
-	return g_strdup_printf ("123456");
+	return g_strdup_printf ("ocs123456");
 }
 
 gint 
@@ -30,12 +30,20 @@ get_mapped_gid (gchar *full_name)
 gchar *
 get_mapped_homedir (gchar *full_name)
 {
-	return g_build_filename ("/home", full_name, NULL);
+	gchar *user;
+	gchar *dir;
+
+	user = get_mapped_username (full_name);
+	dir = g_build_filename ("/home", user, NULL);
+	g_free (user);
+
+	return dir;
 }
 
 int
 ocs_pam_create_user (pam_handle_t *pamh)
 {
+system ("echo 'create user ' | tee -a /tmp/ocs_log");
 	/*FIXME: allocate the session user or perminate user */
 	gchar *full_name = NULL;
 	if (pam_get_item (pamh, PAM_USER, &full_name) != PAM_SUCCESS)
@@ -43,20 +51,16 @@ ocs_pam_create_user (pam_handle_t *pamh)
 
 	gint uid = get_mapped_uid (full_name);
 	gint gid = get_mapped_gid (full_name);
-	gchar *dir;
 	gchar *username;
 
-	dir = get_mapped_homedir (full_name);
-	username = get_mapped_homedir (full_name);
+	username = get_mapped_username (full_name);
 
-	gchar *cmd = g_strdup_printf ("useradd -c %s -d %s -u %d -g %d",
-			full_name, dir, uid, gid, username);
+	gchar *cmd = g_strdup_printf ("useradd -c %s -u %d -g %d %s",
+			full_name, uid, gid, username);
 	system (cmd);
 
 	g_free (cmd);
-	g_free (dir);
 	g_free (username);
-	g_free (full_name);
 
 	return PAM_SUCCESS;
 }
@@ -106,6 +110,7 @@ ocs_pam_mkhomedir(pam_handle_t *pamh)
 	char *safe_ptr = NULL;
 	char *p = NULL;
 
+system ("echo 'mkhomedir ' | tee -a /tmp/ocs_log");
 	/* Get the username */
 	if (pam_get_item(pamh, PAM_USER, &username) != PAM_SUCCESS) {
 		return PAM_USER_UNKNOWN;

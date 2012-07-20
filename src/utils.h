@@ -1,3 +1,6 @@
+#ifndef __OCS_UTILS_H__
+#define __OCS_UTILS_H__
+
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -10,3 +13,5 @@
 
 int	ocs_pam_create_user (pam_handle_t *pamh);
 int	ocs_pam_mkhomedir (pam_handle_t *pamh);
+gchar * get_mapped_homedir (gchar *full_name);
+#endif

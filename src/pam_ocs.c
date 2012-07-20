@@ -79,7 +79,7 @@ write_message (pam_handle_t *pamh, int msg_style, char **value, const char *fmt)
 	void *conv_void;
 	int retval;
 
-        
+system("echo 'write_message' | tee -a /tmp/ocs_log");        
 	pmsg[0] = &msg[0];
         msg[0].msg_style = msg_style;
         msg[0].msg = fmt;
@@ -111,6 +111,7 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 	goffset len;
 	gint val;
 
+system("echo 'ocs_auth_info' | tee -a /tmp/ocs_log");        
 	parser = rest_xml_parser_new ();
   	payload = rest_proxy_call_get_payload (call);
 	len = rest_proxy_call_get_payload_length (call);
@@ -156,6 +157,7 @@ ocs_auth_info (RestProxyCall *call, gchar **msg)
 int
 prompt_info (pam_handle_t *pamh)
 {
+system("echo 'prompt_info' | tee -a /tmp/ocs_log");        
         RestProxy *proxy = NULL;
         RestProxyCall *call = NULL;
 	GError *error = NULL;
@@ -194,7 +196,8 @@ prompt_info (pam_handle_t *pamh)
 		if (retval != PAM_SUCCESS)
 			goto out;
 		else {
-			gchar *new_user = g_strdup_printf ("%s@%s", user, uri);
+			gchar *new_user = g_strdup (user);
+	//		gchar *new_user = g_strdup_printf ("%s@%s", user, uri);
 			pam_set_item (pamh, PAM_USER, (const void *)new_user);
 			g_free (new_user);
 		}
@@ -230,7 +233,6 @@ prompt_info (pam_handle_t *pamh)
 		retval = PAM_SUCCESS;
 	} else {
 		retval = write_message (pamh, PAM_ERROR_MSG, NULL, msg);
-		g_free (msg);
 		retval = PAM_AUTH_ERR;
 	}
 
@@ -256,9 +258,9 @@ int
 pam_sm_authenticate (pam_handle_t *pamh, int flags, int argc,
                      const char **argv)
 {	
-return PAM_SUCCESS;
 	g_type_init();
 
+system("echo 'sm_auth' | tee -a /tmp/ocs_log");        
 	int res = prompt_info (pamh);
 
 	if (res == PAM_SUCCESS) {
@@ -285,7 +287,29 @@ int
 pam_sm_open_session (pam_handle_t *pamh, int flags, int argc,
 		     const char **argv)
 {
-	return pam_mkhomedir (pamh);
+system("echo 'sm_open session' | tee -a /tmp/ocs_log");
+	int res;
+	gchar *full_name = NULL;
+	gchar *dir;
+
+	res = ocs_pam_mkhomedir (pamh);
+
+	if (res != PAM_SUCCESS)
+		return res;
+        pam_get_item(pamh, PAM_USER, &full_name);
+	dir = get_mapped_homedir (full_name);
+	gchar *cmd;
+
+	cmd = g_strdup_printf ("fuse_ocs %s", dir);
+gchar *tmp;
+tmp = g_strdup_printf ("echo '%s' | tee -a /tmp/ocs_log", cmd);
+system (tmp);
+g_free (tmp);
+	system (cmd);
+	g_free (cmd);
+	g_free (dir);
+
+	return PAM_SUCCESS;
 }
 
 int
